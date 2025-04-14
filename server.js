@@ -78,7 +78,7 @@ app.use((req, res, next) => {
                 <div class="file-info">
                   <div class="file-name">${item.name}</div>
                   ${isDirectory ? `<button class="download-btn" onclick="handleDownload(event, '${itemPath}/')">
-                    Download All
+                    Download Game
                   </button>` : ''}
                 </div>
               </a>
