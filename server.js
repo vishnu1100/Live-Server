@@ -7,7 +7,7 @@ const app = express();
 const PORT = 3000;
 
 // Define the directory to serve
-const directoryToServe = path.join('H:', 'GamesServer');
+const directoryToServe = path.join('H:', 'KING FORZA');
 
 // Handle file and folder download requests
 app.get('/download-folder', (req, res) => {
