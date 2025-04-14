@@ -74,13 +74,14 @@ app.use((req, res, next) => {
           return `
             <li class="file-item">
               <a href="${itemPath}${isDirectory ? '/' : ''}" class="file-link">
-                <span class="${iconClass}"></span>
-                ${item.name}
+                <div class="file-cover"></div>
+                <div class="file-info">
+                  <div class="file-name">${item.name}</div>
+                  ${isDirectory ? `<button class="download-btn" onclick="handleDownload(event, '${itemPath}/')">
+                    Download All
+                  </button>` : ''}
+                </div>
               </a>
-              ${isDirectory ? `
-                <button class="download-btn" onclick="handleDownload(event, '${itemPath}/')">
-                  Download All
-                </button>` : ''}
             </li>`;
         }).join('');
 
