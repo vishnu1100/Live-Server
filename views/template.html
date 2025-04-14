@@ -209,6 +209,10 @@
                         <div class="info-value" id="totalSize">Calculating...</div>
                     </div>
                     <div class="info-item">
+                        <div class="info-label">Download Speed</div>
+                        <div class="info-value" id="downloadSpeed">Calculating...</div>
+                    </div>
+                    <div class="info-item">
                         <div class="info-label">Estimated Time</div>
                         <div class="info-value" id="estimatedTime">Calculating...</div>
                     </div>
@@ -303,8 +307,8 @@
                                     (receivedLength / contentLength * 100) + '%';
                                 document.getElementById('downloadedSize').textContent = 
                                     formatSize(receivedLength);
-
-                                // Update estimated time
+                                document.getElementById('downloadSpeed').textContent = 
+                                    formatSize(bytesPerSecond) + '/s';
                                 document.getElementById('estimatedTime').textContent = 
                                     formatTime(estimatedTimeSeconds);
 
@@ -358,12 +362,16 @@
             if (seconds === Infinity || isNaN(seconds)) {
                 return 'Calculating...';
             }
-            if (seconds < 60) {
-                return Math.ceil(seconds) + ' seconds';
-            }
-            const minutes = Math.floor(seconds / 60);
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
             const remainingSeconds = Math.ceil(seconds % 60);
-            return `${minutes} min ${remainingSeconds} sec`;
+            
+            if (hours > 0) {
+                return `${hours}h ${minutes}m ${remainingSeconds}s`;
+            } else if (minutes > 0) {
+                return `${minutes}m ${remainingSeconds}s`;
+            }
+            return `${remainingSeconds}s`;
         }
 
         document.addEventListener('DOMContentLoaded', () => {
