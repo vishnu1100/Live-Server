@@ -9,69 +9,86 @@ const PORT = 3000;
 // Define the directory to serve
 const directoryToServe = path.join('H:', 'GamesServer');
 
-// Handle folder download requests
+// Handle file and folder download requests
 app.get('/download-folder', (req, res) => {
-  const folderPath = req.query.path;
-  if (!folderPath) {
-    return res.status(400).send('No folder path provided');
+  const filePath = req.query.path;
+  if (!filePath) {
+    return res.status(400).send('No path provided');
   }
 
-  const fullPath = path.join(directoryToServe, folderPath);
+  const fullPath = path.join(directoryToServe, filePath);
   
   // Ensure the path is within the allowed directory
   if (!fullPath.startsWith(directoryToServe)) {
     return res.status(403).send('Access denied');
   }
 
-  // Check if the folder exists
-  if (!fs.existsSync(fullPath) || !fs.statSync(fullPath).isDirectory()) {
-    return res.status(404).send('Folder not found');
+  // Check if the path exists
+  if (!fs.existsSync(fullPath)) {
+    return res.status(404).send('Path not found');
   }
 
-  // Calculate folder size first
-  let totalSize = 0;
-  const calculateSize = (dirPath) => {
-    const items = fs.readdirSync(dirPath);
-    for (const item of items) {
-      const itemPath = path.join(dirPath, item);
-      const stats = fs.statSync(itemPath);
-      if (stats.isDirectory()) {
-        calculateSize(itemPath);
-      } else {
-        totalSize += stats.size;
+  const stats = fs.statSync(fullPath);
+  const isDirectory = stats.isDirectory();
+
+  if (isDirectory) {
+    // Calculate folder size first
+    let totalSize = 0;
+    const calculateSize = (dirPath) => {
+      const items = fs.readdirSync(dirPath);
+      for (const item of items) {
+        const itemPath = path.join(dirPath, item);
+        const stats = fs.statSync(itemPath);
+        if (stats.isDirectory()) {
+          calculateSize(itemPath);
+        } else {
+          totalSize += stats.size;
+        }
       }
-    }
-  };
-  calculateSize(fullPath);
+    };
+    calculateSize(fullPath);
 
-  // Set headers for direct download with content length and force download
-  res.setHeader('Content-Type', 'application/zip');
-  res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(path.basename(folderPath))}.zip`);
-  res.setHeader('Content-Length', totalSize);
-  res.setHeader('Content-Transfer-Encoding', 'binary');
-  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-  res.setHeader('Pragma', 'no-cache');
-  res.setHeader('Expires', '0');
+    // Set headers for direct download with content length and force download
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(path.basename(filePath))}.zip`);
+    res.setHeader('Content-Length', totalSize);
+    res.setHeader('Content-Transfer-Encoding', 'binary');
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
 
-  // Create a zip stream without compression
-  const archive = archiver('zip', {
-    store: true // Sets the compression method to STORE (no compression)
-  });
+    // Create a zip stream without compression
+    const archive = archiver('zip', {
+      store: true // Sets the compression method to STORE (no compression)
+    });
 
-  // Handle archive errors
-  archive.on('error', (err) => {
-    console.error('Archive error:', err);
-    res.status(500).send('Error creating archive');
-  });
+    // Handle archive errors
+    archive.on('error', (err) => {
+      console.error('Archive error:', err);
+      res.status(500).send('Error creating archive');
+    });
 
-  // Pipe archive data to the response
-  archive.pipe(res);
+    // Pipe archive data to the response
+    archive.pipe(res);
 
-  // Add the folder to the archive without compression
-  archive.directory(fullPath, false);
+    // Add the folder to the archive without compression
+    archive.directory(fullPath, false);
 
-  // Finalize the archive
-  archive.finalize();
+    // Finalize the archive
+    archive.finalize();
+  } else {
+    // For single file download
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(path.basename(filePath))}`);
+    res.setHeader('Content-Length', stats.size);
+    res.setHeader('Content-Transfer-Encoding', 'binary');
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+
+    // Stream the file directly
+    fs.createReadStream(fullPath).pipe(res);
+  }
 });
 
 // Serve static files from the directory
@@ -98,6 +115,8 @@ app.use((req, res, next) => {
         const fileListHtml = items.map(item => {
           const isDirectory = item.isDirectory();
           const itemPath = path.join(relativePath, item.name);
+          const stats = fs.statSync(path.join(fullPath, item.name));
+          const fileSize = (stats.size / (1024 * 1024)).toFixed(2);
           const iconClass = isDirectory ? 'folder-icon' : 'file-icon';
           
           return `
@@ -106,9 +125,8 @@ app.use((req, res, next) => {
                 <div class="file-cover"></div>
                 <div class="file-info">
                   <div class="file-name">${item.name}</div>
-                  ${isDirectory ? `<button class="download-btn" onclick="handleDownload(event, '${itemPath}/')">
-                    Download Game
-                  </button>` : ''}
+                  <div class="file-size">${isDirectory ? '' : `${fileSize} MB`}</div>
+                  <button class="download-btn" onclick="handleDownload(event, '${itemPath}${isDirectory ? '/' : ''}')">Download ${isDirectory ? 'Folder' : 'File'}</button>
                 </div>
               </a>
             </li>`;
