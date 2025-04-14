@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Server</title>
+    <style>
+        :root {
+            --primary-color: #2196F3;
+            --hover-color: #1976D2;
+            --background-color: #f5f5f5;
+            --text-color: #333;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            background-color: var(--background-color);
+            color: var(--text-color);
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            padding: 2rem;
+        }
+
+        .breadcrumb {
+            display: flex;
+            align-items: center;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+        }
+
+        .breadcrumb a {
+            color: var(--primary-color);
+            text-decoration: none;
+            padding: 0.5rem;
+        }
+
+        .breadcrumb span {
+            color: #666;
+            margin: 0 0.5rem;
+        }
+
+        .file-list {
+            list-style: none;
+        }
+
+        .file-item {
+            display: flex;
+            align-items: center;
+            padding: 1rem;
+            border-bottom: 1px solid #eee;
+            transition: background-color 0.2s;
+        }
+
+        .file-item:hover {
+            background-color: #f8f9fa;
+        }
+
+        .file-icon {
+            margin-right: 1rem;
+            color: var(--primary-color);
+        }
+
+        .file-link {
+            flex-grow: 1;
+            color: var(--text-color);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+        }
+
+        .download-btn {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: background-color 0.2s;
+            margin-left: 1rem;
+        }
+
+        .download-btn:hover {
+            background-color: var(--hover-color);
+        }
+
+        .folder-icon::before {
+            content: '📁';
+            margin-right: 0.5rem;
+        }
+
+        .file-icon::before {
+            content: '📄';
+            margin-right: 0.5rem;
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 1rem;
+            }
+
+            .container {
+                padding: 1rem;
+            }
+
+            .file-item {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .download-btn {
+                margin-left: 0;
+                margin-top: 0.5rem;
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <nav class="breadcrumb">
+            <!-- Breadcrumb will be dynamically inserted here -->
+        </nav>
+        <ul class="file-list">
+            <!-- File list will be dynamically inserted here -->
+        </ul>
+    </div>
+    <script>
+        function createBreadcrumb(path) {
+            const parts = path.split('/').filter(part => part);
+            const breadcrumb = document.querySelector('.breadcrumb');
+            breadcrumb.innerHTML = '<a href="/">Home</a>';
+            
+            let currentPath = '';
+            parts.forEach((part, index) => {
+                currentPath += '/' + part;
+                breadcrumb.innerHTML += `<span>/</span><a href="${currentPath}">${part}</a>`;
+            });
+        }
+
+        function handleDownload(e, path) {
+            e.preventDefault();
+            window.location.href = '/download-folder?path=' + encodeURIComponent(path);
+        }
+
+        // Initialize the page
+        document.addEventListener('DOMContentLoaded', () => {
+            const currentPath = window.location.pathname;
+            createBreadcrumb(currentPath);
+        });
+    </script>
+</body>
+</html>

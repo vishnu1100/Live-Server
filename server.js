@@ -1,82 +1,105 @@
 const express = require('express');
 const serveIndex = require('serve-index');
 const path = require('path');
-const tar = require('tar'); // Add tar for streaming folder as an archive
 const fs = require('fs');
+const archiver = require('archiver');
 const app = express();
 const PORT = 3000;
 
 // Define the directory to serve
 const directoryToServe = path.join('H:', 'GamesServer');
 
+// Handle folder download requests
+app.get('/download-folder', (req, res) => {
+  const folderPath = req.query.path;
+  if (!folderPath) {
+    return res.status(400).send('No folder path provided');
+  }
+
+  const fullPath = path.join(directoryToServe, folderPath);
+  
+  // Ensure the path is within the allowed directory
+  if (!fullPath.startsWith(directoryToServe)) {
+    return res.status(403).send('Access denied');
+  }
+
+  // Check if the folder exists
+  if (!fs.existsSync(fullPath) || !fs.statSync(fullPath).isDirectory()) {
+    return res.status(404).send('Folder not found');
+  }
+
+  const archive = archiver('zip', {
+    zlib: { level: 9 } // Maximum compression
+  });
+
+  // Set the headers
+  res.attachment(`${path.basename(folderPath)}.zip`);
+
+  // Pipe archive data to the response
+  archive.pipe(res);
+
+  // Add the folder to the archive
+  archive.directory(fullPath, false);
+
+  // Finalize the archive
+  archive.finalize();
+});
+
 // Serve static files from the directory
 app.use(express.static(directoryToServe));
 
-// Serve directory listings for the directory
-app.use(serveIndex(directoryToServe, { icons: true }));
-
-// Ensure middleware order: Move the custom middleware after serveIndex
+// Custom directory listing middleware
 app.use((req, res, next) => {
   if (req.url.endsWith('/')) {
-    const originalSend = res.send;
-    res.send = function (body) {
-      if (typeof body === 'string') {
-        // Inject "Download All" button into the directory listing
-        body = body.replace(
-          '</body>',
-          `<style>
-            .download-all-btn {
-              color: white;
-              background-color: red;
-              border: none;
-              padding: 5px 10px;
-              margin-left: 10px;
-              cursor: pointer;
-            }
-          </style>
-          <script>
-            document.addEventListener('DOMContentLoaded', () => {
-              const folderLinks = document.querySelectorAll('li a[href$="/"]');
-              folderLinks.forEach(folder => {
-                const button = document.createElement('button');
-                button.textContent = 'Download All';
-                button.className = 'download-all-btn';
-                button.onclick = () => {
-                  const downloadFiles = (folderUrl) => {
-                    fetch(folderUrl)
-                      .then(res => res.text())
-                      .then(html => {
-                        const parser = new DOMParser();
-                        const doc = parser.parseFromString(html, 'text/html');
-                        const links = doc.querySelectorAll('li a[href]');
-                        links.forEach(link => {
-                          const href = link.getAttribute('href');
-                          if (href.endsWith('/')) {
-                            // Recursively download subfolder contents
-                            downloadFiles(folderUrl + href);
-                          } else {
-                            // Download individual file
-                            const a = document.createElement('a');
-                            a.href = folderUrl + href;
-                            a.download = href;
-                            a.click();
-                          }
-                        });
-                      });
-                  };
-                  downloadFiles(folder.href);
-                };
-                folder.parentElement.appendChild(button);
-              });
-            });
-          </script></body>`
-        );
+    const relativePath = req.url;
+    const fullPath = path.join(directoryToServe, relativePath);
+    
+    fs.readdir(fullPath, { withFileTypes: true }, (err, items) => {
+      if (err) {
+        return next(err);
       }
-      originalSend.call(this, body);
-    };
+
+      // Read the template file
+      fs.readFile(path.join(__dirname, 'views', 'template.html'), 'utf8', (err, template) => {
+        if (err) {
+          return next(err);
+        }
+
+        // Generate file list HTML
+        const fileListHtml = items.map(item => {
+          const isDirectory = item.isDirectory();
+          const itemPath = path.join(relativePath, item.name);
+          const iconClass = isDirectory ? 'folder-icon' : 'file-icon';
+          
+          return `
+            <li class="file-item">
+              <a href="${itemPath}${isDirectory ? '/' : ''}" class="file-link">
+                <span class="${iconClass}"></span>
+                ${item.name}
+              </a>
+              ${isDirectory ? `
+                <button class="download-btn" onclick="handleDownload(event, '${itemPath}/')">
+                  Download All
+                </button>` : ''}
+            </li>`;
+        }).join('');
+
+        // Insert the file list into the template
+        const html = template.replace(
+          '<ul class="file-list">',
+          `<ul class="file-list">${fileListHtml}`
+        );
+
+        res.send(html);
+      });
+    });
+  } else {
+    next();
   }
-  next();
 });
+
+// Serve static files after the directory listing middleware
+app.use(express.static(directoryToServe));
 
 // Route to download the entire folder as a tar archive
 app.get('/download', (req, res) => {
