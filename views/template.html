@@ -114,6 +114,65 @@
             background-color: var(--hover-color);
         }
 
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background: var(--card-bg);
+            padding: 2rem;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .progress-container {
+            margin: 1.5rem 0;
+        }
+
+        .progress-bar {
+            height: 8px;
+            background: linear-gradient(90deg, #4a90e2, #67b26f);
+            border-radius: 4px;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .progress-info {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        .info-item {
+            background: var(--primary-color);
+            padding: 0.75rem;
+            border-radius: 6px;
+            text-align: center;
+        }
+
+        .info-label {
+            font-size: 0.875rem;
+            color: #888;
+        }
+
+        .info-value {
+            font-size: 1.125rem;
+            font-weight: 500;
+            margin-top: 0.25rem;
+        }
+
         @media (max-width: 768px) {
             body {
                 padding: 1rem;
@@ -135,6 +194,52 @@
             <!-- File list will be dynamically inserted here -->
         </ul>
     </div>
+    <div id="downloadModal" class="modal">
+        <div class="modal-content">
+            <h2>Downloading...</h2>
+            <div class="progress-container">
+                <div class="progress-bar" id="progressBar"></div>
+                <div class="progress-info">
+                    <div class="info-item">
+                        <div class="info-label">Downloaded</div>
+                        <div class="info-value" id="downloadedSize">0 MB</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">Total Size</div>
+                        <div class="info-value" id="totalSize">Calculating...</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">Estimated Time</div>
+                        <div class="info-value" id="estimatedTime">Calculating...</div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="cancelDownload" class="cancel-btn">Cancel Download</button>
+            </div>
+        </div>
+    </div>
+
+    <style>
+    .modal-footer {
+        margin-top: 1.5rem;
+        text-align: right;
+    }
+    .cancel-btn {
+        background-color: #e74c3c;
+        color: var(--text-color);
+        border: none;
+        padding: 0.5rem 1rem;
+        border-radius: 4px;
+        cursor: pointer;
+        font-weight: 500;
+        transition: background-color 0.2s;
+    }
+    .cancel-btn:hover {
+        background-color: #c0392b;
+    }
+    </style>
+
     <script>
         function createBreadcrumb(path) {
             const parts = path.split('/').filter(part => part);
@@ -150,7 +255,115 @@
 
         function handleDownload(e, path) {
             e.preventDefault();
-            window.location.href = '/download-folder?path=' + encodeURIComponent(path);
+            const modal = document.getElementById('downloadModal');
+            modal.style.display = 'flex';
+            let abortController = new AbortController();
+
+            document.getElementById('cancelDownload').onclick = () => {
+                abortController.abort();
+                modal.style.display = 'none';
+                document.getElementById('progressBar').style.width = '0%';
+                document.getElementById('downloadedSize').textContent = '0 MB';
+                document.getElementById('totalSize').textContent = 'Calculating...';
+                document.getElementById('estimatedTime').textContent = 'Calculating...';
+            };
+
+            fetch('/download-folder?path=' + encodeURIComponent(path), {
+                signal: abortController.signal
+            })
+            .then(response => {
+                const reader = response.body.getReader();
+                const contentLength = +response.headers.get('Content-Length');
+                document.getElementById('totalSize').textContent = formatSize(contentLength);
+
+                let receivedLength = 0;
+                let startTime = Date.now();
+                let lastUpdate = startTime;
+                let lastBytes = 0;
+
+                return new ReadableStream({
+                    start(controller) {
+                        function push() {
+                            reader.read().then(({done, value}) => {
+                                if (done) {
+                                    controller.close();
+                                    return;
+                                }
+
+                                controller.enqueue(value);
+                                receivedLength += value.length;
+
+                                const currentTime = Date.now();
+                                const elapsedTime = (currentTime - startTime) / 1000; // in seconds
+                                const remainingBytes = contentLength - receivedLength;
+                                const bytesPerSecond = receivedLength / elapsedTime;
+                                const estimatedTimeSeconds = remainingBytes / bytesPerSecond;
+
+                                document.getElementById('progressBar').style.width = 
+                                    (receivedLength / contentLength * 100) + '%';
+                                document.getElementById('downloadedSize').textContent = 
+                                    formatSize(receivedLength);
+
+                                // Update estimated time
+                                document.getElementById('estimatedTime').textContent = 
+                                    formatTime(estimatedTimeSeconds);
+
+                                push();
+                            }).catch(err => {
+                                if (err.name === 'AbortError') {
+                                    console.log('Download cancelled');
+                                } else {
+                                    console.error('Download failed:', err);
+                                }
+                                controller.error(err);
+                            });
+                        }
+
+                        push();
+                    }
+                });
+            })
+            .then(stream => new Response(stream))
+            .then(response => response.blob())
+            .then(blob => {
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = path.split('/').pop() + '.zip';
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+                modal.style.display = 'none';
+            })
+            .catch(err => {
+                if (err.name !== 'AbortError') {
+                    console.error('Download failed:', err);
+                }
+            });
+        }
+
+        function formatSize(bytes) {
+            const units = ['B', 'KB', 'MB', 'GB'];
+            let size = bytes;
+            let unitIndex = 0;
+            while (size >= 1024 && unitIndex < units.length - 1) {
+                size /= 1024;
+                unitIndex++;
+            }
+            return size.toFixed(2) + ' ' + units[unitIndex];
+        }
+
+        function formatTime(seconds) {
+            if (seconds === Infinity || isNaN(seconds)) {
+                return 'Calculating...';
+            }
+            if (seconds < 60) {
+                return Math.ceil(seconds) + ' seconds';
+            }
+            const minutes = Math.floor(seconds / 60);
+            const remainingSeconds = Math.ceil(seconds % 60);
+            return `${minutes} min ${remainingSeconds} sec`;
         }
 
         document.addEventListener('DOMContentLoaded', () => {

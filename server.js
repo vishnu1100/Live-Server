@@ -28,17 +28,46 @@ app.get('/download-folder', (req, res) => {
     return res.status(404).send('Folder not found');
   }
 
+  // Calculate folder size first
+  let totalSize = 0;
+  const calculateSize = (dirPath) => {
+    const items = fs.readdirSync(dirPath);
+    for (const item of items) {
+      const itemPath = path.join(dirPath, item);
+      const stats = fs.statSync(itemPath);
+      if (stats.isDirectory()) {
+        calculateSize(itemPath);
+      } else {
+        totalSize += stats.size;
+      }
+    }
+  };
+  calculateSize(fullPath);
+
+  // Set headers for direct download with content length and force download
+  res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(path.basename(folderPath))}.zip`);
+  res.setHeader('Content-Length', totalSize);
+  res.setHeader('Content-Transfer-Encoding', 'binary');
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+
+  // Create a zip stream without compression
   const archive = archiver('zip', {
-    zlib: { level: 9 } // Maximum compression
+    store: true // Sets the compression method to STORE (no compression)
   });
 
-  // Set the headers
-  res.attachment(`${path.basename(folderPath)}.zip`);
+  // Handle archive errors
+  archive.on('error', (err) => {
+    console.error('Archive error:', err);
+    res.status(500).send('Error creating archive');
+  });
 
   // Pipe archive data to the response
   archive.pipe(res);
 
-  // Add the folder to the archive
+  // Add the folder to the archive without compression
   archive.directory(fullPath, false);
 
   // Finalize the archive
